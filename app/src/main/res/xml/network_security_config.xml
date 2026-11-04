@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      User-supplied OpenAI-compatible servers are often local/LAN endpoints without TLS.
+      Cleartext is therefore permitted, but the app shows a prominent warning for http:// URLs
+      and never sends an API key to a cleartext address without explicit confirmation.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

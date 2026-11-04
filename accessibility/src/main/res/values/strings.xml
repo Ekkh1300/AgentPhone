@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">AgentPhone screen control</string>
+    <string name="accessibility_service_description">Optional, advanced feature. Lets the AgentPhone agent read the visible screen and perform taps, scrolls and text input on your behalf. It is off by default and every action requires your confirmation. Never enable it unless you understand the risk.</string>
+</resources>

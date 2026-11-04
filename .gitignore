@@ -1,0 +1,38 @@
+# Gradle and build output
+.gradle/
+build/
+.kotlin/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+*.hprof
+
+# Signing material — never commit
+keystore.properties
+keystore/
+*.jks
+*.keystore
+
+# Packaged binaries
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local scratch
+build-log.txt
+shots/
+
+# Debug scratch
+test-log.txt
+ui.xml
+*.log

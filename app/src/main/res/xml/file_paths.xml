@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="workspace" path="agent_workspace/" />
+    <files-path name="exports" path="exports/" />
+    <files-path name="captures" path="captures/" />
+    <cache-path name="cache" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-path name="downloads" path="Download/" />
+    <external-path name="all_external" path="." />
+</paths>
