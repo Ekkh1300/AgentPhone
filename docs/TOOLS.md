@@ -47,7 +47,7 @@ listed on **Tools & permissions → Advanced access**.
 | All files access (`MANAGE_EXTERNAL_STORAGE`, API 30+) | `location="all"` on the file tools: list, read, write, search the whole shared storage. | Android **All files access** page. On API ≤ 29 the app uses `READ/WRITE_EXTERNAL_STORAGE` instead. |
 | Notification listener | `notifications_list`, `notification_action`. | Android **Notification access** page. |
 | Usage access (`PACKAGE_USAGE_STATS`) | `apps_usage`. | Android **Usage access** page. |
-| Screen control (accessibility service) | `screen_snapshot`, `screen_action`, Quick Settings automation used by `airplane_mode` and `quick_toggle`. | Android **Accessibility** settings. |
+| Screen control (accessibility service) | `screen_snapshot`, `screen_action`, Quick Settings automation used by `airplane_mode` and by `quick_toggle` (Bluetooth on Android 13+, and all other targets). | Android **Accessibility** settings. |
 | Modify system settings (`WRITE_SETTINGS`) | `brightness_set`, `display_control`. | Android **Modify system settings** page. |
 | Do Not Disturb access | `dnd_set`, silent `ringer_mode`. | Android **Do Not Disturb access** page. |
 | `WRITE_SECURE_SETTINGS` | Writing `secure`/`global` keys with `system_settings`. | adb only: `adb shell pm grant com.agentphone.app.debug android.permission.WRITE_SECURE_SETTINGS`. The app shows a copyable command via `system_settings action=grant_info`. |
@@ -69,7 +69,7 @@ Runtime permissions are requested the first time a tool needs them and can be re
 | `NEARBY_WIFI_DEVICES` (API 33+) | `wifi_scan` |
 | `READ_PHONE_STATE` | `sim_info` |
 | `READ_PHONE_NUMBERS` (optional) | Phone number display in `sim_info` |
-| `BLUETOOTH_CONNECT` (API 31+) | `bluetooth_devices`, `quick_toggle target=bluetooth` |
+| `BLUETOOTH_CONNECT` (API 31+) | `bluetooth_devices`, `quick_toggle target=bluetooth` (direct adapter switching and state reads) |
 | `POST_NOTIFICATIONS` (API 33+) | `notification_post`, `reminder_schedule` |
 
 `SET_WALLPAPER` and `VIBRATE` are normal permissions granted at install time.
@@ -195,7 +195,7 @@ the app cannot remove a package silently.
 | `volume_control` | WRITE | Read or change media/ring/alarm/notification volume. | `action`** (`up`/`down`/`mute`/`unmute`/`set`/`status`), `stream`, `percent` (0–100) |
 | `brightness_set` | WRITE | Set screen brightness. Needs the special **Modify system settings** access; the tool opens that settings page when missing. | `percent`** (0–100) |
 | `display_control` | WRITE | Auto-rotate on/off (rotation lock), screen timeout (15–1800 s) and adaptive brightness. Needs **Modify system settings**. | `action`** (`status`/`rotation_lock`/`rotation_unlock`/`timeout`/`auto_brightness_on`/`auto_brightness_off`), `seconds` |
-| `quick_toggle` | DANGEROUS | Read or toggle Wi-Fi, Bluetooth, mobile data, hotspot, location, airplane mode, Do Not Disturb and battery saver. Direct radio APIs are blocked on Android 10+, so with the screen-control service enabled the tool taps the matching Quick Settings tile (and the Android 12+ Internet panel for Wi-Fi/mobile data). | `target`** (enum), `action`** (`status`/`on`/`off`/`toggle`) |
+| `quick_toggle` | DANGEROUS | Read or toggle Wi-Fi, Bluetooth, mobile data, hotspot, location, airplane mode, Do Not Disturb and battery saver. Bluetooth is switched directly through `BluetoothAdapter` (Android 12 and older, with `BLUETOOTH_CONNECT`). Android 13+ reserves silent radio changes for system apps, so the tool then taps the Quick Settings tile when screen control is enabled, or opens the system Bluetooth enable dialog / Bluetooth panel. Wi-Fi, mobile data, hotspot, location and airplane mode are toggled through Quick Settings (the Android 12+ Internet panel for Wi-Fi/mobile data). | `target`** (enum), `action`** (`status`/`on`/`off`/`toggle`) |
 | `airplane_mode` | DANGEROUS | Read or toggle airplane mode through the Quick Settings tile and verify the global setting; without screen control it opens the airplane settings page. | `action`** (`status`/`on`/`off`/`toggle`) |
 | `ringer_mode` | DANGEROUS | Normal, vibrate or silent ringer. Silent requires Do Not Disturb access; the tool opens that page when missing. | `action`** (`status`/`normal`/`vibrate`/`silent`) |
 | `media_control` | WRITE | Send media keys to the active player. | `action`** (`play_pause`/`play`/`pause`/`next`/`previous`/`stop`) |

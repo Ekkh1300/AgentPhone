@@ -335,8 +335,17 @@ class ToolsViewModel @Inject constructor(
                 } else {
                     ToolAccess.NEEDS_PERMISSION
                 }
-            "screen_snapshot", "screen_action", "airplane_mode", "quick_toggle" ->
+            "screen_snapshot", "screen_action", "airplane_mode" ->
                 if (accessibilityEnabled()) ToolAccess.READY else ToolAccess.NEEDS_ACCESSIBILITY
+            "quick_toggle" ->
+                if (accessibilityEnabled() ||
+                    Build.VERSION.SDK_INT < 31 ||
+                    granted(Manifest.permission.BLUETOOTH_CONNECT)
+                ) {
+                    ToolAccess.READY
+                } else {
+                    ToolAccess.NEEDS_PERMISSION
+                }
             "brightness_set", "display_control" ->
                 if (Settings.System.canWrite(context)) ToolAccess.READY else ToolAccess.NEEDS_SETTINGS
             "dnd_set" ->

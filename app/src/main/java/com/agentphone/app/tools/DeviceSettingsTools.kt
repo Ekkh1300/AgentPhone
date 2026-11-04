@@ -1,7 +1,9 @@
 package com.agentphone.app.tools
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationManager
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
@@ -340,9 +342,10 @@ class QuickToggleTool @Inject constructor(
     override val name = "quick_toggle"
     override val description =
         "Read or toggle system radios and modes: Wi-Fi, Bluetooth, mobile data, hotspot, location, " +
-            "airplane mode, Do Not Disturb and battery saver. Android 10+ blocks direct radio changes from " +
-            "apps, so when the optional screen-control service is enabled the agent taps the matching " +
-            "Quick Settings tile for you."
+            "airplane mode, Do Not Disturb and battery saver. Bluetooth is switched directly through the " +
+            "Bluetooth adapter when the OS allows it (Android 12 and older); Android 13+ reserves silent " +
+            "radio switching for system apps, so the agent then either taps the Quick Settings tile " +
+            "(screen control enabled) or opens the system Bluetooth dialog/panel for you."
     override val riskLevel = RiskLevel.DANGEROUS
     override val category = ToolCategory.SYSTEM
     override val parameters = Schemas.obj(
@@ -363,8 +366,8 @@ class QuickToggleTool @Inject constructor(
     )
 
     override suspend fun execute(context: ToolContext, arguments: JsonObject): ToolResult {
-        val target = arguments.string("target")
-        val action = arguments.string("action", "status")
+        val target = arguments.string("target").trim().lowercase()
+        val action = arguments.string("action", "status").trim().lowercase()
         val labels = labelsFor(target)
             ?: return ToolResult.error("Unknown quick toggle target: $target")
         if (target == "bluetooth" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -389,14 +392,40 @@ class QuickToggleTool @Inject constructor(
         if (current != null && current == desired) {
             return ToolResult.ok("$target was already ${if (desired) "on" else "off"}.")
         }
+        if (target == "bluetooth" && tryDirectBluetoothToggle(desired)) {
+            return ToolResult.ok("$target is now ${if (desired) "on" else "off"} (switched directly).")
+        }
         val service = AgentAccessibilityService.instance
-            ?: run {
-                bus.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        if (service == null) {
+            if (target == "bluetooth") {
+                val intent = if (desired) {
+                    Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                } else {
+                    Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                }
+                bus.launch(intent)
+                if (awaitState(target, desired, 10)) {
+                    return ToolResult.ok("$target is now ${if (desired) "on" else "off"}.")
+                }
                 return ToolResult.error(
-                    "Android blocks apps from changing $target directly. Enable AgentPhone screen control " +
-                        "in Settings > Accessibility and I will tap the Quick Settings tile for you.",
+                    if (desired) {
+                        "Android does not let apps turn Bluetooth on silently. The system confirmation " +
+                            "dialog is open; confirm it to switch Bluetooth on."
+                    } else {
+                        "Android 13+ does not let apps turn Bluetooth off silently, so Bluetooth " +
+                            "settings is open: tap Connection preferences > Bluetooth and switch it off, " +
+                            "or use the Bluetooth tile in Quick Settings. Enabling AgentPhone screen " +
+                            "control lets me tap that tile for you."
+                    },
                 )
             }
+            bus.launch(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            return ToolResult.error(
+                "Android blocks apps from changing $target directly, and this device has no direct API " +
+                    "for it. Enable AgentPhone screen control in Settings > Accessibility and I will tap " +
+                    "the Quick Settings tile for you.",
+            )
+        }
         if (!service.openQuickSettings()) return ToolResult.error("Could not open Quick Settings.")
         if (!awaitQuickSettings(service)) {
             return ToolResult.error("Quick Settings did not open. Open it once manually and ask again.")
@@ -450,6 +479,31 @@ class QuickToggleTool @Inject constructor(
             delay(400)
         }
         return false
+    }
+
+    private suspend fun awaitState(target: String, desired: Boolean, attempts: Int): Boolean {
+        repeat(attempts) {
+            delay(500)
+            if (readState(target) == desired) return true
+        }
+        return false
+    }
+
+    @SuppressLint("MissingPermission")
+    @Suppress("DEPRECATION")
+    private suspend fun tryDirectBluetoothToggle(desired: Boolean): Boolean {
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        val accepted = runCatching {
+            if (desired) adapter.enable() else adapter.disable()
+        }.getOrDefault(false)
+        if (!accepted) return false
+        return awaitState("bluetooth", desired, 12)
     }
 
     @Suppress("DEPRECATION")
