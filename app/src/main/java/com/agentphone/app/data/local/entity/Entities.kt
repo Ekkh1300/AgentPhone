@@ -82,6 +82,136 @@ data class ProviderEntity(
 )
 
 @Entity(
+    tableName = "auto_replies",
+    indices = [Index("address"), Index("receivedAt"), Index("status")],
+)
+data class AutoReplyEntity(
+    @PrimaryKey val id: String,
+    val address: String,
+    val contactName: String? = null,
+    val incomingBody: String,
+    val receivedAt: Long,
+    val dueAt: Long,
+    val status: String,
+    val replyText: String? = null,
+    val sentAt: Long? = null,
+    val reason: String? = null,
+)
+
+object AwayChatMode {
+    const val DEFAULT = "DEFAULT"
+    const val AUTO = "AUTO"
+    const val DRAFT = "DRAFT"
+    const val NEVER = "NEVER"
+}
+
+object AwayChatType {
+    const val PRIVATE = "PRIVATE"
+    const val GROUP = "GROUP"
+    const val CHANNEL = "CHANNEL"
+    const val BOT = "BOT"
+}
+
+object AwayPendingStatus {
+    const val PENDING = "PENDING"
+    const val CANCELLED = "CANCELLED"
+    const val DONE = "DONE"
+}
+
+object AwayDecisionValue {
+    const val REPLY = "reply"
+    const val DRAFT = "draft"
+    const val IGNORE = "ignore"
+    const val ESCALATE = "escalate"
+}
+
+object AwayDecisionStatus {
+    const val SENT = "SENT"
+    const val DRAFT = "DRAFT"
+    const val IGNORED = "IGNORED"
+    const val ESCALATED = "ESCALATED"
+    const val FAILED = "FAILED"
+    const val REJECTED = "REJECTED"
+    const val UNDONE = "UNDONE"
+    const val CANCELLED = "CANCELLED"
+}
+
+object AwayUrgency {
+    const val LOW = "low"
+    const val NORMAL = "normal"
+    const val HIGH = "high"
+}
+
+@Entity(tableName = "away_chat_rules", indices = [Index("updatedAt")])
+data class AwayChatRuleEntity(
+    @PrimaryKey val chatId: Long,
+    val title: String,
+    val chatType: String,
+    val mode: String,
+    val disclosure: Boolean? = null,
+    val sendToAi: Boolean = true,
+    val instructions: String? = null,
+    val addedAt: Long,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "away_pending",
+    indices = [Index("chatId"), Index("dueAt"), Index("status")],
+)
+data class AwayPendingEntity(
+    @PrimaryKey val id: String,
+    val chatId: Long,
+    val chatTitle: String,
+    val chatType: String,
+    val senderId: Long,
+    val senderName: String,
+    val messageIds: String,
+    val lastMessageId: Long,
+    val firstMessageAt: Long,
+    val lastMessageAt: Long,
+    val dueAt: Long,
+    val status: String,
+    val createdAt: Long,
+)
+
+@Entity(
+    tableName = "away_decisions",
+    indices = [Index("chatId"), Index("createdAt"), Index("status"), Index("triggerMessageId")],
+)
+data class AwayDecisionEntity(
+    @PrimaryKey val id: String,
+    val chatId: Long,
+    val chatTitle: String,
+    val chatType: String,
+    val senderId: Long,
+    val senderName: String,
+    val incomingText: String,
+    val decision: String,
+    val replyText: String? = null,
+    val confidence: Double = 0.0,
+    val reason: String? = null,
+    val urgency: String = AwayUrgency.NORMAL,
+    val risksJson: String = "[]",
+    val status: String,
+    val disclosure: Boolean = false,
+    val triggerMessageId: Long,
+    val replyToMessageId: Long? = null,
+    val sentMessageId: Long? = null,
+    val createdAt: Long,
+    val sentAt: Long? = null,
+    val error: String? = null,
+)
+
+@Entity(tableName = "away_watchlist")
+data class AwayWatchEntity(
+    @PrimaryKey val chatId: Long,
+    val title: String,
+    val reason: String,
+    val addedAt: Long,
+)
+
+@Entity(
     tableName = "tool_call_logs",
     indices = [Index("chatId"), Index("startedAt")],
 )

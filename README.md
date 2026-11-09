@@ -57,6 +57,20 @@ minSdk 26 · targetSdk 36. No backend, no analytics, no telemetry, no bundled AP
   wallpaper, vibration, sensors, network/Wi-Fi/Bluetooth/SIM details; file opening and APK
   install through the system installer. Every read is permission-gated and every send, delete or
   install is `DANGEROUS`.
+- **Automatic SMS replies**, off by default: if you have not answered a text within the configured
+  delay (30 minutes by default), the agent reads the newest message and replies for you using your
+  reply instructions and long-term memory. It never answers your own number, stops as soon as you
+  reply first, skips shortcodes and verification codes, refuses messages flagged as prompt
+  injection, enforces a daily limit, and records every send in the audit log with a notification.
+  See [docs/AUTO_REPLY.md](docs/AUTO_REPLY.md).
+- **Telegram away mode**, off by default: sign in with your own api_id/api_hash and, after a
+  per-chat delay, the agent can reply to allowed chats **as your own account** through TDLib. It
+  merges message bursts into one batch, answers groups only when you are addressed, never answers
+  channels or bots, keeps unknown senders/links/attachments as drafts, escalates OTP, payment,
+  credential, legal and admin topics to an approval queue, detects prompt injection, adds a
+  disclosure suffix, enforces per-chat/global caps and cooldowns, and disables itself after
+  repeated provider failures. Drafts and escalations can be approved, edited or rejected from the
+  queue; every decision is logged and reversible. See [docs/TELEGRAM.md](docs/TELEGRAM.md).
 - Three risk levels. `READ` runs automatically, `WRITE` asks once (with chat/always grants), and
   `DANGEROUS` **always** asks — it can never be silently triggered or auto-approved.
 - Tool output and web pages are treated as untrusted data, wrapped in an escaped
@@ -198,6 +212,7 @@ app/                         Android application module
 │   ├── data/                Room, DataStore, provider adapters, backups, Keystore cipher
 │   ├── domain/              Models, tool contract, provider contract
 │   ├── platform/            Permissions, attachments, camera, notifications, TTS
+│   ├── sms/                 Auto-reply receiver, scheduler, composer and worker
 │   ├── tools/               74 on-device tools
 │   ├── ui/                  Compose screens, ViewModels, theme
 │   ├── widget/              App widget and Quick Settings tile
@@ -216,6 +231,10 @@ docs/                        Architecture, tools and security documentation
   and audit record.
 - [docs/SECURITY.md](docs/SECURITY.md) — secret storage, prompt-injection defenses, permission
   table, threat model and Android limitations.
+- [docs/AUTO_REPLY.md](docs/AUTO_REPLY.md) — how automatic SMS replies decide when to answer,
+  what they skip, and how each send is audited.
+- [docs/TELEGRAM.md](docs/TELEGRAM.md) — Telegram away mode: api_id/api_hash onboarding, TDLib
+  build notes, encrypted database, rules, approvals, ban risk, troubleshooting.
 
 ## Renaming the app
 
@@ -229,15 +248,25 @@ docs/                        Architecture, tools and security documentation
 Alarms and timers open the system clock UI; calls can only be pre-dialed; DND, brightness and
 screen control require special user-granted access; background runs cannot approve `WRITE`
 actions; PDF text is read as rendered pages, not extracted text; SMS sending, calendar edits and
-APK installs depend on the permissions and apps present on the device. The full list, with the
-reason for each, is in [docs/SECURITY.md](docs/SECURITY.md#known-android-limitations).
+APK installs depend on the permissions and apps present on the device. Automatic SMS replies are
+SMS-only (RCS and messaging apps are not covered), the delay is best-effort under Doze/WorkManager
+scheduling, and they need a configured AI provider with network access. Telegram away mode needs
+your own api_id/api_hash, a live foreground service and network, supports text replies only (no
+attachments or secret chats), and sending from your account carries Telegram's normal anti-spam
+ban risk. The full list, with the reason for each, is in
+[docs/SECURITY.md](docs/SECURITY.md#known-android-limitations) and
+[docs/TELEGRAM.md](docs/TELEGRAM.md#limitations).
 
 ## Safety notice
 
 AgentPhone can send messages, change settings, delete files and open the system installer. Those
 actions are always gated by an explicit confirmation in the app, and `DANGEROUS` actions can never
-be auto-approved. You remain responsible for what you approve and for the model you connect. Do
-not connect a provider you do not trust with personal data, and keep Android's screen lock on.
+be auto-approved. There are two deliberate opt-in exceptions, both off by default and stoppable at
+any time: **Automatic SMS replies** (requires an “I understand” confirmation plus SMS permissions)
+and **Telegram away mode** (requires your own Telegram api_id/api_hash and logging in). You remain
+responsible for what you approve, for the instructions you give these features, and for the model
+you connect. Do not connect a provider you do not trust with personal data, and keep Android's
+screen lock on.
 
 ## License
 

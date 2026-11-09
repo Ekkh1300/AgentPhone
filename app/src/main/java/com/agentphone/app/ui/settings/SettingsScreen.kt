@@ -1,6 +1,8 @@
 package com.agentphone.app.ui.settings
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -22,18 +24,22 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -64,6 +70,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agentphone.app.BuildConfig
@@ -84,6 +91,9 @@ fun SettingsScreen(
     onProviders: () -> Unit,
     onTools: () -> Unit,
     onAudit: () -> Unit,
+    onAutoReply: () -> Unit,
+    onAway: () -> Unit,
+    onTelegram: () -> Unit,
     onAbout: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -98,6 +108,8 @@ fun SettingsScreen(
     var mcpKeyDialog by remember { mutableStateOf(false) }
     var clearDialog by remember { mutableStateOf(false) }
     var advanced by remember { mutableStateOf(false) }
+    var autoReplyConfirm by remember { mutableStateOf(false) }
+    var autoReplyInstructionsDialog by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
@@ -146,6 +158,39 @@ fun SettingsScreen(
                     ).show()
                 }
             }
+        }
+    }
+
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        val granted = results[Manifest.permission.RECEIVE_SMS] == true &&
+            results[Manifest.permission.SEND_SMS] == true
+        if (granted) {
+            viewModel.setAutoReplyEnabled(true)
+        } else {
+            Toast.makeText(
+                context,
+                context.getString(R.string.auto_reply_permission_denied),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
+    val enableAutoReply = {
+        autoReplyConfirm = false
+        val missing = buildList {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) add(Manifest.permission.RECEIVE_SMS)
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) add(Manifest.permission.SEND_SMS)
+        }
+        if (missing.isEmpty()) {
+            viewModel.setAutoReplyEnabled(true)
+        } else {
+            smsPermissionLauncher.launch(missing.toTypedArray())
         }
     }
 
@@ -248,6 +293,112 @@ fun SettingsScreen(
                         subtitle = stringResource(R.string.allow_private_web_desc),
                         checked = settings.allowPrivateWeb,
                         onCheckedChange = viewModel::setAllowPrivateWeb,
+                    )
+                }
+            }
+
+            item {
+                SectionTitle(stringResource(R.string.auto_reply_section))
+                SectionCard {
+                    SettingSwitchRow(
+                        title = stringResource(R.string.auto_reply),
+                        subtitle = stringResource(
+                            R.string.auto_reply_desc,
+                            settings.autoReplyDelayMinutes,
+                        ),
+                        checked = settings.autoReplyEnabled,
+                        onCheckedChange = { enabled ->
+                            if (enabled) autoReplyConfirm = true
+                            else viewModel.setAutoReplyEnabled(false)
+                        },
+                    )
+                    if (settings.autoReplyEnabled) {
+                        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                        Text(
+                            stringResource(R.string.auto_reply_delay),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Text(
+                            stringResource(
+                                R.string.auto_reply_delay_value,
+                                settings.autoReplyDelayMinutes,
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Slider(
+                            value = settings.autoReplyDelayMinutes.toFloat(),
+                            onValueChange = { viewModel.setAutoReplyDelay(it.roundToInt()) },
+                            valueRange = 1f..180f,
+                            steps = 178,
+                        )
+                        Text(
+                            stringResource(R.string.auto_reply_delay_desc),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            stringResource(R.string.auto_reply_limit),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(top = 10.dp),
+                        )
+                        Text(
+                            stringResource(
+                                R.string.auto_reply_limit_value,
+                                settings.autoReplyMaxPerDay,
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Slider(
+                            value = settings.autoReplyMaxPerDay.toFloat(),
+                            onValueChange = { viewModel.setAutoReplyLimit(it.roundToInt()) },
+                            valueRange = 1f..20f,
+                            steps = 18,
+                        )
+                        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                        SettingsRow(
+                            icon = Icons.AutoMirrored.Outlined.Notes,
+                            title = stringResource(R.string.auto_reply_instructions),
+                            subtitle = if (settings.autoReplyInstructions.isBlank()) {
+                                stringResource(R.string.auto_reply_instructions_empty)
+                            } else {
+                                settings.autoReplyInstructions.take(90)
+                            },
+                            onClick = { autoReplyInstructionsDialog = true },
+                        )
+                        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                        SettingsRow(
+                            icon = Icons.Outlined.History,
+                            title = stringResource(R.string.auto_reply_history),
+                            subtitle = null,
+                            onClick = onAutoReply,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.auto_reply_note),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            item {
+                SectionTitle(stringResource(R.string.away_section))
+                SectionCard {
+                    SettingsRow(
+                        icon = Icons.Outlined.NightsStay,
+                        title = stringResource(R.string.away_title),
+                        subtitle = stringResource(R.string.away_desc),
+                        onClick = onAway,
+                    )
+                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                    SettingsRow(
+                        icon = Icons.Outlined.Send,
+                        title = stringResource(R.string.telegram_title),
+                        subtitle = stringResource(R.string.telegram_subtitle),
+                        onClick = onTelegram,
                     )
                 }
             }
@@ -576,8 +727,81 @@ fun SettingsScreen(
         )
     }
 
-    if (webKeyDialog) {
-        var key by remember { mutableStateOf("") }
+    if (autoReplyConfirm) {
+        var understood by remember { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { autoReplyConfirm = false },
+            title = { Text(stringResource(R.string.auto_reply_confirm_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.auto_reply_confirm_body))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { understood = !understood }
+                            .padding(top = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = understood, onCheckedChange = { understood = it })
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.i_understand),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { enableAutoReply() }, enabled = understood) {
+                    Text(stringResource(R.string.auto_reply))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { autoReplyConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (autoReplyInstructionsDialog) {
+        var text by remember { mutableStateOf(settings.autoReplyInstructions) }
+        AlertDialog(
+            onDismissRequest = { autoReplyInstructionsDialog = false },
+            title = { Text(stringResource(R.string.auto_reply_instructions)) },
+            text = {
+                Column {
+                    Text(
+                        stringResource(R.string.auto_reply_instructions_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 8,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.setAutoReplyInstructions(text)
+                        autoReplyInstructionsDialog = false
+                    },
+                ) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { autoReplyInstructionsDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (webKeyDialog) {        var key by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { webKeyDialog = false },
             title = { Text(stringResource(R.string.web_search_key)) },

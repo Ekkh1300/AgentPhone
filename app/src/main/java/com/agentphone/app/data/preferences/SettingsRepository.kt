@@ -68,6 +68,10 @@ class SettingsRepository @Inject constructor(
             prefs[Keys.SAF_TREE_URI] = next.safTreeUri ?: ""
             prefs[Keys.ALLOW_PRIVATE_WEB] = next.allowPrivateWeb
             prefs[Keys.MEMORY_NOTES] = next.memoryNotes
+            prefs[Keys.AUTO_REPLY_ENABLED] = next.autoReplyEnabled
+            prefs[Keys.AUTO_REPLY_DELAY] = next.autoReplyDelayMinutes
+            prefs[Keys.AUTO_REPLY_LIMIT] = next.autoReplyMaxPerDay
+            prefs[Keys.AUTO_REPLY_INSTRUCTIONS] = next.autoReplyInstructions
             prefs[Keys.MCP_ENABLED] = next.mcpEnabled
             prefs[Keys.MCP_URL] = next.mcpServerUrl
             prefs[Keys.MCP_KEY] = next.mcpApiKeyEncrypted ?: ""
@@ -159,6 +163,10 @@ class SettingsRepository @Inject constructor(
             safTreeUri = this[Keys.SAF_TREE_URI]?.takeIf(String::isNotBlank),
             allowPrivateWeb = this[Keys.ALLOW_PRIVATE_WEB] ?: false,
             memoryNotes = this[Keys.MEMORY_NOTES] ?: "",
+            autoReplyEnabled = this[Keys.AUTO_REPLY_ENABLED] ?: false,
+            autoReplyDelayMinutes = (this[Keys.AUTO_REPLY_DELAY] ?: 30).coerceIn(1, 180),
+            autoReplyMaxPerDay = (this[Keys.AUTO_REPLY_LIMIT] ?: 5).coerceIn(1, 20),
+            autoReplyInstructions = this[Keys.AUTO_REPLY_INSTRUCTIONS] ?: "",
             mcpEnabled = this[Keys.MCP_ENABLED] ?: false,
             mcpServerUrl = this[Keys.MCP_URL] ?: "",
             mcpApiKeyEncrypted = this[Keys.MCP_KEY]?.takeIf(String::isNotBlank),
@@ -192,6 +200,10 @@ class SettingsRepository @Inject constructor(
         val SAF_TREE_URI = stringPreferencesKey("saf_tree_uri")
         val ALLOW_PRIVATE_WEB = booleanPreferencesKey("allow_private_web")
         val MEMORY_NOTES = stringPreferencesKey("memory_notes")
+        val AUTO_REPLY_ENABLED = booleanPreferencesKey("auto_reply_enabled")
+        val AUTO_REPLY_DELAY = intPreferencesKey("auto_reply_delay_minutes")
+        val AUTO_REPLY_LIMIT = intPreferencesKey("auto_reply_max_per_day")
+        val AUTO_REPLY_INSTRUCTIONS = stringPreferencesKey("auto_reply_instructions")
         val MCP_ENABLED = booleanPreferencesKey("mcp_enabled")
         val MCP_URL = stringPreferencesKey("mcp_url")
         val MCP_KEY = stringPreferencesKey("mcp_key_enc")

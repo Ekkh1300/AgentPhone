@@ -5,6 +5,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.room.Room
 import com.agentphone.app.data.local.AppDatabase
+import com.agentphone.app.data.local.dao.AutoReplyDao
+import com.agentphone.app.data.local.dao.AwayDao
 import com.agentphone.app.data.local.dao.ChatDao
 import com.agentphone.app.data.local.dao.MessageDao
 import com.agentphone.app.data.local.dao.ProviderDao
@@ -43,6 +45,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -57,6 +60,12 @@ object AppModule {
 
     @Provides
     fun provideToolLogDao(database: AppDatabase): ToolLogDao = database.toolLogDao()
+
+    @Provides
+    fun provideAutoReplyDao(database: AppDatabase): AutoReplyDao = database.autoReplyDao()
+
+    @Provides
+    fun provideAwayDao(database: AppDatabase): AwayDao = database.awayDao()
 
     @Provides
     @Singleton

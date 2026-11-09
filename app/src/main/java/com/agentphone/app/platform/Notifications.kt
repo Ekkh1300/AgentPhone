@@ -15,6 +15,7 @@ object Notifications {
     const val CHANNEL_REMINDERS = "reminders"
     const val CHANNEL_AGENT = "agent"
     const val CHANNEL_BACKGROUND = "background_agent"
+    const val CHANNEL_AUTO_REPLY = "auto_reply"
 
     fun ensureChannels(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -43,6 +44,15 @@ object Notifications {
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
                 description = context.getString(R.string.notification_channel_background_desc)
+            },
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_AUTO_REPLY,
+                context.getString(R.string.notification_channel_auto_reply),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = context.getString(R.string.notification_channel_auto_reply_desc)
             },
         )
     }

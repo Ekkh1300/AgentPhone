@@ -3,6 +3,7 @@ package com.agentphone.app.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.agentphone.app.data.backup.BackupManager
+import com.agentphone.app.data.local.dao.AutoReplyDao
 import com.agentphone.app.data.preferences.SettingsRepository
 import com.agentphone.app.data.repository.AuditRepository
 import com.agentphone.app.data.repository.ChatRepository
@@ -10,6 +11,7 @@ import com.agentphone.app.data.repository.ProviderRepository
 import com.agentphone.app.domain.model.AppSettings
 import com.agentphone.app.domain.model.ProviderProfile
 import com.agentphone.app.domain.model.ThemeMode
+import com.agentphone.app.autoreply.AutoReplyScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +35,8 @@ class SettingsViewModel @Inject constructor(
     private val chats: ChatRepository,
     private val audit: AuditRepository,
     private val backup: BackupManager,
+    private val autoReplyDao: AutoReplyDao,
+    private val autoReplies: AutoReplyScheduler,
 ) : ViewModel() {
 
     val state: StateFlow<SettingsUiState> = combine(
@@ -66,6 +70,16 @@ class SettingsViewModel @Inject constructor(
     fun setMcpEnabled(value: Boolean) = update { it.copy(mcpEnabled = value) }
     fun setMcpUrl(value: String) = update { it.copy(mcpServerUrl = value) }
     fun setLanguage(tag: String) = update { it.copy(language = tag) }
+    fun setAutoReplyDelay(minutes: Int) = update { it.copy(autoReplyDelayMinutes = minutes.coerceIn(1, 180)) }
+    fun setAutoReplyLimit(value: Int) = update { it.copy(autoReplyMaxPerDay = value.coerceIn(1, 20)) }
+    fun setAutoReplyInstructions(value: String) = update { it.copy(autoReplyInstructions = value.take(8_000)) }
+
+    fun setAutoReplyEnabled(enabled: Boolean) {
+        update { it.copy(autoReplyEnabled = enabled) }
+        if (!enabled) {
+            viewModelScope.launch { autoReplies.cancelAllPending() }
+        }
+    }
 
     fun saveWebSearchKey(value: String) {
         viewModelScope.launch { settingsRepository.setWebSearchKey(value) }
@@ -80,6 +94,7 @@ class SettingsViewModel @Inject constructor(
             chats.deleteAllChats()
             providers.deleteAll()
             audit.clear()
+            autoReplyDao.deleteAll()
             settingsRepository.resetAll()
         }
     }

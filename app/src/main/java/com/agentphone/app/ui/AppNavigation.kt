@@ -16,12 +16,18 @@ import com.agentphone.app.platform.SharedPayload
 import com.agentphone.app.ui.share.ShareViewModel
 import com.agentphone.app.ui.about.AboutScreen
 import com.agentphone.app.ui.audit.AuditScreen
+import com.agentphone.app.ui.autoreply.AutoReplyScreen
+import com.agentphone.app.ui.away.AwayDraftsScreen
+import com.agentphone.app.ui.away.AwayLogScreen
+import com.agentphone.app.ui.away.AwayRulesScreen
+import com.agentphone.app.ui.away.AwayScreen
 import com.agentphone.app.ui.chat.ChatScreen
 import com.agentphone.app.ui.chats.ConversationsScreen
 import com.agentphone.app.ui.models.ModelPickerScreen
 import com.agentphone.app.ui.providers.ProviderEditorScreen
 import com.agentphone.app.ui.providers.ProvidersScreen
 import com.agentphone.app.ui.settings.SettingsScreen
+import com.agentphone.app.ui.telegram.TelegramScreen
 import com.agentphone.app.ui.tools.ToolsScreen
 
 object Routes {
@@ -32,6 +38,12 @@ object Routes {
     const val MODELS = "models/{providerId}?chatId={chatId}"
     const val TOOLS = "tools"
     const val AUDIT = "audit"
+    const val AUTO_REPLY = "auto_reply"
+    const val AWAY = "away"
+    const val AWAY_RULES = "away/rules"
+    const val AWAY_DRAFTS = "away/drafts"
+    const val AWAY_LOG = "away/log"
+    const val TELEGRAM = "telegram"
     const val SETTINGS = "settings"
     const val ABOUT = "about"
 
@@ -46,6 +58,8 @@ fun AppNavigation(
     onShareConsumed: () -> Unit = {},
     startNewChat: Boolean = false,
     onNewChatConsumed: () -> Unit = {},
+    openRoute: String? = null,
+    onRouteConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val shareViewModel: ShareViewModel = hiltViewModel()
@@ -65,6 +79,13 @@ fun AppNavigation(
         shareViewModel.openChat.collect { chatId ->
             navController.navigate(Routes.chat(chatId))
         }
+    }
+    LaunchedEffect(openRoute) {
+        val route = openRoute ?: return@LaunchedEffect
+        runCatching {
+            navController.navigate(route) { launchSingleTop = true }
+        }
+        onRouteConsumed()
     }
     NavHost(
         navController = navController,
@@ -131,12 +152,39 @@ fun AppNavigation(
         composable(Routes.AUDIT) {
             AuditScreen(onBack = { navController.popBackStack() })
         }
+        composable(Routes.AUTO_REPLY) {
+            AutoReplyScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.AWAY) {
+            AwayScreen(
+                onBack = { navController.popBackStack() },
+                onRules = { navController.navigate(Routes.AWAY_RULES) },
+                onDrafts = { navController.navigate(Routes.AWAY_DRAFTS) },
+                onLog = { navController.navigate(Routes.AWAY_LOG) },
+                onTelegram = { navController.navigate(Routes.TELEGRAM) },
+            )
+        }
+        composable(Routes.AWAY_RULES) {
+            AwayRulesScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.AWAY_DRAFTS) {
+            AwayDraftsScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.AWAY_LOG) {
+            AwayLogScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.TELEGRAM) {
+            TelegramScreen(onBack = { navController.popBackStack() })
+        }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onProviders = { navController.navigate(Routes.PROVIDERS) },
                 onTools = { navController.navigate(Routes.TOOLS) },
                 onAudit = { navController.navigate(Routes.AUDIT) },
+                onAutoReply = { navController.navigate(Routes.AUTO_REPLY) },
+                onAway = { navController.navigate(Routes.AWAY) },
+                onTelegram = { navController.navigate(Routes.TELEGRAM) },
                 onAbout = { navController.navigate(Routes.ABOUT) },
             )
         }

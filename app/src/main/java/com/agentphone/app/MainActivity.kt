@@ -57,6 +57,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     private var newChatRequest by mutableStateOf(false)
+    private var openRoute by mutableStateOf<String?>(null)
 
     @Inject
     lateinit var permissions: PermissionCoordinator
@@ -82,6 +83,7 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         newChatRequest = intent.getBooleanExtra(EXTRA_NEW_CHAT, false)
+        openRoute = intent.getStringExtra(EXTRA_OPEN_ROUTE)
         shareInbox.accept(intent)
         setContent {
             val appViewModel: AppViewModel = hiltViewModel()
@@ -114,6 +116,8 @@ class MainActivity : ComponentActivity() {
                                 onShareConsumed = shareInbox::consume,
                                 startNewChat = newChatRequest,
                                 onNewChatConsumed = { newChatRequest = false },
+                                openRoute = openRoute,
+                                onRouteConsumed = { openRoute = null },
                             )
                         }
                     }
@@ -129,11 +133,13 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         newChatRequest = intent.getBooleanExtra(EXTRA_NEW_CHAT, false)
+        openRoute = intent.getStringExtra(EXTRA_OPEN_ROUTE)
         shareInbox.accept(intent)
     }
 
     companion object {
         const val EXTRA_NEW_CHAT = "com.agentphone.app.extra.NEW_CHAT"
+        const val EXTRA_OPEN_ROUTE = "com.agentphone.app.extra.OPEN_ROUTE"
     }
 }
 

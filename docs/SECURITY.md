@@ -16,13 +16,29 @@ app stores, what it sends, how dangerous actions are gated, and what the platfor
   (for example after a factory reset), the app reports that the saved key could not be decrypted
   and asks the user to re-enter it; it never falls back to a weaker store.
 - `EncryptedSharedPreferences` is intentionally not used because it is deprecated.
-- Keys are never logged. The only `Log` calls in release code are gated behind
-  `BuildConfig.DEBUG` and contain chat titles/short previews, never credentials.
+- Keys are never logged. Debug `Log` calls contain chat titles/short previews, never credentials.
+  The away-mode worker logs only an exception class name on failure, and TDLib's own logging is
+  disabled; message text, auth codes and provider output never reach logcat.
 - API keys are **not** included in chat export files.
 - `android:allowBackup="false"`, and both legacy backup rules and Android 12+ data-extraction
   rules exclude every domain (root, database, shared preferences, files) from cloud backup and
   device transfer. The keystore key is non-exportable anyway, so restored ciphertext would be
   useless.
+
+### Telegram credentials and TDLib database
+
+- The Telegram `api_id` and phone number are stored in DataStore; the `api_hash` is encrypted with
+  the same `SecretCipher` (AES-256-GCM, non-exportable Keystore key).
+- The 32-byte TDLib database key is generated with `SecureRandom` on first use, stored only as
+  `SecretCipher` ciphertext, and handed to TDLib raw in memory. TDLib encrypts its SQLite database
+  with it.
+- The TDLib folder (`files/tdlib/db` and `files/tdlib/files`) is app-private and covered by the
+  same “exclude every domain” backup and device-transfer rules as the rest of the app.
+- TDLib's own logging is disabled with `Client.setLogMessageHandler(0, null)`; its log lines can
+  contain message text. Login codes and 2FA passwords exist only in memory and are sent directly
+  to TDLib.
+- **Wipe local data** signs out, deletes the encrypted credential blob, the TDLib database key and
+  the TDLib folder, and clears away-mode rules and decisions.
 
 ### Provider requests
 
@@ -75,8 +91,10 @@ The model is an untrusted planner and every tool output is untrusted data:
 
 - Denying an action immediately stops the run; the model is told not to retry, and the remaining
   tool calls in that turn are cancelled.
-- **Background tasks auto-deny every WRITE and DANGEROUS call** (`background-auto-deny`) because
-  no user is present to approve them. Only READ tools run in the background.
+- **Background agent tasks auto-deny every WRITE and DANGEROUS call** (`background-auto-deny`)
+  because no user is present to approve them. Only READ tools run in that loop. The separate
+  opt-in auto-reply subsystem described below is the only path that sends anything without a
+  per-message prompt.
 - Arguments are shown verbatim in the approval sheet, and the tool description explains the
   effect. There is no "remember this for all future chats" for dangerous capabilities.
 - `dial_number` uses `Intent.ACTION_DIAL`; it can only pre-fill the dialer and can never place a
@@ -89,6 +107,69 @@ The model is an untrusted planner and every tool output is untrusted data:
   storage. Absolute paths and `..` escapes that leave a known volume are rejected. The optional
   all-files mode is off until the user turns it on in Android settings; there is no silent
   escalation and no fallback that widens scope.
+
+## Automatic SMS replies (opt-in)
+
+This is the only feature that can send a message without a per-message confirmation. It is a
+separate subsystem, not an agent tool, and it has its own safeguards:
+
+- **Off by default.** Enabling it requires an “I understand what this will do” confirmation in
+  Settings plus the `RECEIVE_SMS` and `SEND_SMS` runtime permissions. Turning it off immediately
+  cancels every pending reply.
+- **Only a plain SMS reply.** The composer is called with no tools at all, so it cannot read
+  files, change settings or call anything else.
+- **Never a silent trigger from the model.** The agent's chat loop cannot enable it, change its
+  instructions or send through it.
+- **Won't answer:** shortcodes and alphanumeric senders (banks, operators, services), messages
+  containing verification/one-time codes, messages that match the prompt-injection detector,
+  the phone's own number, and any thread where the user already sent an SMS after the incoming
+  message.
+- **Rate limited:** a configurable maximum number of automatic replies per local day (default 5),
+  and only one pending reply per address — a newer message resets the timer instead of stacking.
+- **Visible and auditable:** every attempt writes a local Room row and an `auto_reply` entry in
+  the audit log (`DANGEROUS`, approval `auto-reply-enabled`), and sends result/skip notifications.
+  The history screen lists the incoming text, the reply and the reason for every skip.
+- **Untrusted input:** the SMS body and transcript are wrapped as untrusted data, the injection
+  detector is checked first, and the prompt explicitly forbids following instructions found in
+  messages.
+- **Opt-out persistence:** the pending timer lives in WorkManager and the database, so a reboot
+  does not lose it; disabling the feature cancels it.
+
+## Telegram away mode (opt-in)
+
+This sends messages from the user's **own Telegram account** through TDLib. It is off by default,
+requires the user's own api_id/api_hash and a successful login, and is a separate subsystem that
+the agent loop cannot invoke.
+
+- **Default deny allow-list.** No chat is answered until the user adds it as `Auto` or `Draft`.
+  `Never` blocks a chat; removing a rule removes the permission. Channels, bots and secret chats
+  are always refused.
+- **Groups:** addressed only (mention, reply to the owner or a configured nickname), text only,
+  threaded, short/neutral, half the per-chat cap, at least a 60-minute cooldown, disclosure on by
+  default. A separate per-chat switch can forbid sending that group's text to the AI.
+- **Hard escalation without sending:** OTP/verification codes, bank/card/payment data,
+  credentials, personal-data requests, legal and admin/moderation topics are escalated before or
+  after the model call and never auto-sent. The model also has no tools and is instructed never to
+  agree to anything, reveal data or claim to be human.
+- **Prompt injection:** incoming text is delimited and escaped; a detector match escalates the
+  batch, adds the chat to the watchlist and marks the audit entry. Incoming text is never used as
+  a system instruction.
+- **Strict, validated output:** one JSON object, validated (allowed enums, numeric confidence in
+  range, reply length, risks array). Invalid output is retried once, then escalated. A provider
+  failure means **no send** and increments an error streak; three consecutive failures disable
+  away mode.
+- **No duplicates, no loops:** a sent/draft/escalated decision for the trigger message cancels a
+  replayed job, a newer incoming message supersedes the batch, outgoing messages cancel pending
+  replies, and read messages are not answered.
+- **Caps:** per-chat and global daily caps plus a per-chat cooldown (stricter in groups), and
+  Telegram's own slow mode is honoured. Limits are checked at fire time and logged with a reason.
+- **Transparency:** automated replies get a disclosure suffix (default on; mandatory-looking in
+  groups unless disabled per chat). Every decision is stored locally and shown in the log with
+  correct/undo/never actions; drafts and escalations are notified and actionable.
+- **Kill switches:** settings switch, Quick Settings tile and the notification pause action
+  disable the feature, cancel every timer and stop the foreground service immediately.
+
+See [TELEGRAM.md](TELEGRAM.md) for onboarding, storage, ban risk and limitations.
 
 ## Audit log
 
@@ -135,8 +216,9 @@ the user decides.
 | `WRITE_CALENDAR` | runtime (dangerous) | `calendar_create`, `calendar_update`, `calendar_delete`. | Calendar write tools |
 | `READ_CONTACTS` | runtime (dangerous) | `contacts_search`. | Contacts tool |
 | `WRITE_CONTACTS` | runtime (dangerous) | `contact_create` (atomic provider batch). | Contact create tool |
-| `READ_SMS` | runtime (dangerous) | `sms_list`. | Messages tool |
-| `SEND_SMS` | runtime (dangerous) | `sms_send`. Always DANGEROUS and confirmed; no background sending. | SMS send tool |
+| `READ_SMS` | runtime (dangerous) | `sms_list`; the opt-in auto-reply thread reader. | Messages tool, auto-reply |
+| `RECEIVE_SMS` | runtime (dangerous) | Starts the opt-in auto-reply timer when an SMS arrives, even while the app is closed. The receiver stores the sender/text locally and schedules work; it never replies by itself. | Enabling auto-reply |
+| `SEND_SMS` | runtime (dangerous) | `sms_send` (always DANGEROUS and confirmed), and the opt-in auto-reply worker. The model cannot use the auto-reply path; it is driven by the incoming message, the timer and the user's explicit feature opt-in. | SMS send tool, enabling auto-reply |
 | `READ_CALL_LOG` | runtime (dangerous) | `call_log`. | Call history tool |
 | `READ_PHONE_STATE` | runtime (dangerous) | `sim_info` SIM/carrier details. | SIM info tool |
 | `READ_PHONE_NUMBERS` | runtime (dangerous) | Optional phone-number display in `sim_info`. | SIM info tool |
@@ -154,11 +236,13 @@ the user decides.
 
 There is **no** `SYSTEM_ALERT_WINDOW`, `CALL_PHONE`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`,
 `READ_MEDIA_AUDIO`, `BODY_SENSORS`, `ACCESS_BACKGROUND_LOCATION` or `MODIFY_PHONE_STATE`.
-Messages are never sent in the background and calls are never placed by the app: `dial_number`
+The agent tool loop never sends messages in the background and never places calls: `dial_number`
 only opens the dialer, `sms_send` is DANGEROUS and runs only in the foreground with your approval,
-and `app_install` relies on the system installer and its own confirmation dialog.
-Gallery attachments use the system Photo Picker, which grants access to only the picked image and
-needs no storage permission.
+and `app_install` relies on the system installer and its own confirmation dialog. The opt-in
+auto-reply subsystem is the sole automatic sender; it can only be enabled with an explicit
+warning acknowledgement plus SMS permissions, never exposes itself as a model tool, and records
+every send. Gallery attachments use the system Photo Picker, which grants access to only the
+picked image and needs no storage permission.
 
 ### Special app access (not runtime permissions)
 
@@ -192,6 +276,8 @@ audited, and the app never requests it on its own.
 | Destination | Data | Trigger |
 | --- | --- | --- |
 | The configured provider | System prompt, chat history (truncated to context), attachments you added, tool results, tool schemas | Every message |
+| The configured provider (auto-reply) | The incoming SMS, the last few messages of that thread, the contact name, your auto-reply instructions and long-term memory notes | Only when auto-reply is enabled and the timer fires |
+| The configured provider (Telegram away mode) | The triggering message, the last 14 messages of **that chat only**, sender name and “in contacts” flag, your persona, long-term memory notes and calendar free/busy text | Only when away mode is on, that chat is in the allow-list, the debounce timer fires, and no local rule escalates first |
 | The configured web-search endpoint | The search query and API key | `web_search` |
 | The configured MCP server | Tool name/arguments and the MCP key | `mcp_list_tools` / `mcp_call_tool` |
 | URLs you ask the model to fetch | Request to that site (your IP is visible to it) | `web_fetch` / `open_url` |
@@ -215,9 +301,13 @@ calendar/contacts/location, and the Advanced access card explains what each gran
 | Model deletes files or changes system settings | Recursive delete/move and screen actions are DANGEROUS; airplane, ringer, DND, radio toggles and raw system-settings writes are DANGEROUS and always confirmed; brightness/display require special access; file access is limited to workspace/SAF unless the user explicitly grants all files. |
 | Model uninstalls an app | `app_uninstall` is DANGEROUS and uses `ACTION_DELETE`; the system confirmation is always shown. |
 | Model reads private notifications or app usage | Both require explicit special access the user grants in system settings; results are read-only tools, never persisted. |
-| Model reads messages, call history or contacts / sends an SMS | Reading requires runtime permissions the user grants; `sms_send` is DANGEROUS and always confirmed; no SMS is ever sent in a background run (background runs auto-deny WRITE/DANGEROUS). |
+| Model reads messages, call history or contacts / sends an SMS | Reading requires runtime permissions the user grants; `sms_send` is DANGEROUS and always confirmed; the background agent loop auto-denies it. Automatic replies are a separate opt-in feature that only sends a plain SMS after the user-configured delay, never exposes itself as a tool, and logs every send. |
+| Prompt injection inside an incoming SMS | The auto-reply composer wraps the text as untrusted data, runs the injection detector first, skips matches, offers no tools, and instructs the model to ignore directives inside messages. |
+| Prompt injection inside an incoming Telegram message | `AwaySafety`/`PromptInjectionDetector` delimit and escape the text, a match escalates the batch without sending, the chat is added to the watchlist, and the audit entry is marked. The responder has no tools. |
+| Telegram automation causing account limits or a ban | Off by default, default-deny allow-list, low per-chat/global caps, cooldown, draft-only for unknown senders and links/attachments, no bulk/outreach use, flood waits respected; the risk and the user's responsibility are documented in TELEGRAM.md. |
+| Telegram session data on a lost device | The TDLib database is encrypted with a Keystore-protected key; the api_hash is encrypted; the folder is excluded from backups. As with any logged-in app, an unlocked device can still read messages. |
 | Model installs an APK | `app_install` is DANGEROUS, requires **Install unknown apps**, opens the system installer, and the system shows its own final confirmation. Only local `.apk` files are accepted. |
-| Malicious app invoking exported components | Only `MainActivity` (launcher/share/deep link), the widget receiver and the tile service are exported. The tile service is protected by `BIND_QUICK_SETTINGS_TILE`; the notification listener is `exported="false"` and protected by `BIND_NOTIFICATION_LISTENER_SERVICE`. No exported services or providers process untrusted data. |
+| Malicious app invoking exported components | Only `MainActivity` (launcher/share/deep link), the widget receiver, the tile service and the SMS receiver are exported. The tile service is protected by `BIND_QUICK_SETTINGS_TILE`; the SMS receiver requires `BROADCAST_SMS` so only the system can invoke it; the notification listener is `exported="false"` and protected by `BIND_NOTIFICATION_LISTENER_SERVICE`. No exported services or providers process untrusted data. |
 
 ## Reporting
 
@@ -232,7 +322,10 @@ pretending success:
 
 - Alarms and timers cannot be created silently on modern Android; the system clock UI opens.
 - Calls cannot be placed automatically — only the dialer can be opened.
-- SMS cannot be sent or read (no permissions requested).
+- SMS can be read, sent and received only after the user grants the SMS runtime permissions; the
+  auto-reply feature requires its own explicit opt-in. RCS and messaging apps are not covered.
+- WorkManager delays are inexact under Doze and battery optimization, so an auto-reply may go out
+  later than the configured delay; the app never claims an exact send time.
 - Wi-Fi, Bluetooth, mobile data, hotspot and NFC cannot be toggled through public APIs on
   Android 10+. `quick_toggle` automates the Quick Settings tile (and the Internet panel for
   Wi-Fi/mobile data) when the accessibility service is enabled; otherwise it reports the
